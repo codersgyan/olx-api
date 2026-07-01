@@ -8,8 +8,15 @@ import (
 type Code string
 
 const (
-	CodeInvalidID     Code = "invalid_id"
-	CodeInternalError Code = "internal_error"
+	CodeInvalidID        Code = "invalid_id"
+	CodeNotFound         Code = "not_found"
+	CodeInternalError    Code = "internal_error"
+	CodeMalformedJSON    Code = "malformed_json"
+	CodeValidationFailed Code = "validation_failed"
+	CodeUnauthenticated  Code = "unauthenticated"
+	CodeForbidden        Code = "forbidden"
+	CodeConflict         Code = "conflict"
+	CodeRateLimited      Code = "rate_limited"
 )
 
 type errorEnvelope struct {

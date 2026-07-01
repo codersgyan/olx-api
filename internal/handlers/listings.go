@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"net/http"
 	"time"
@@ -43,7 +42,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 				LIMIT 100`)
 	if err != nil {
 		lh.logger.Error("listings query error", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 		return
 	}
 	defer rows.Close()
@@ -54,7 +53,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 		var l listing
 		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt); err != nil {
 			lh.logger.Error("rows scan error", "err", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 			return
 		}
 
@@ -64,8 +63,8 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Printf("rows.err: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		lh.logger.Error("rows error", "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 		return
 	}
 
@@ -88,7 +87,6 @@ func (lh ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		`DELETE FROM listings WHERE id = $1`, id)
 	if err != nil {
 		lh.logger.Error("delete failed", "listing_id", id, "request_id", requestId, "err", err)
-		// http.Error(w, "internal error", http.StatusInternalServerError)
 		httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 		return
 	}
