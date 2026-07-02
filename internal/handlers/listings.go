@@ -3,7 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -96,6 +96,7 @@ func (lh ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
+
 	ctx := r.Context()
 	requestId := middleware.RequestIDFromContext(ctx)
 
@@ -105,7 +106,13 @@ func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "invalid body", httpx.CodeMalformedJSON)
 		return
 	}
-	fmt.Println(req)
+
+	if err := req.Validate(); err != nil {
+		var verr *ValidationError
+		errors.As(err, &verr)
+		httpx.ValidationError(w, http.StatusUnprocessableEntity, err.Error(), httpx.CodeValidationFailed, verr.Field)
+		return
+	}
 
 	row := lh.db.QueryRowContext(ctx, `
 	INSERT INTO listings (title, description, price, city) VALUES ($1, $2, $3, $4) RETURNING id, title, created_at`, req.Title, req.Description, req.Price, req.City)
