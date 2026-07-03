@@ -32,8 +32,20 @@ func (req CreateListingRequest) Validate() error {
 	if strings.TrimSpace(req.Title) == "" {
 		return &ValidationError{Field: "title", Msg: "must not be empty"}
 	}
-
-	// assignment - add validation for other remaining fields.
-
+	if len(req.Title) > 200 {
+		return &ValidationError{Field: "title", Msg: "must be at most 200 characters"}
+	}
+	if strings.TrimSpace(req.Description) == "" {
+		return &ValidationError{Field: "description", Msg: "must not be empty"}
+	}
+	if len(req.Description) > 5000 {
+		return &ValidationError{Field: "description", Msg: "must be at most 5000 characters"}
+	}
+	if req.Price <= 0 {
+		return &ValidationError{Field: "price", Msg: "must be greater than zero"}
+	}
+	if strings.TrimSpace(req.City) == "" {
+		return &ValidationError{Field: "city", Msg: "must not be empty"}
+	}
 	return nil
 }
