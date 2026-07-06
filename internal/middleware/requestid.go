@@ -7,12 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type ctxKey int
-
-const (
-	requestIDKey ctxKey = iota
-)
-
 const (
 	requestId = "X-Request-ID"
 )
