@@ -9,6 +9,7 @@ import (
 
 	"github.com/codersgyan/olx-api/internal/httpx"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 const (
@@ -51,8 +52,20 @@ func RequireAuth(logger *slog.Logger, secret string) func(next http.Handler) htt
 				return
 			}
 
-			ctxWithUserID := context.WithValue(ctx, userIDKey, claims.Subject)
+			userId, err := uuid.Parse(claims.Subject)
+			if err != nil {
+				log.Error("string to uuid failed", "err", err)
+				httpx.Error(w, http.StatusUnauthorized, "token is invalid or expired", httpx.CodeUnauthenticated)
+				return
+			}
+
+			ctxWithUserID := context.WithValue(ctx, userIDKey, userId)
 			next.ServeHTTP(w, r.WithContext(ctxWithUserID))
 		})
 	}
+}
+
+func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(userIDKey).(uuid.UUID)
+	return id, ok
 }

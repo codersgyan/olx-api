@@ -39,7 +39,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", handlers.Health)
 	mux.HandleFunc("GET /listings", lh.List)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(lh.Delete)))
-	mux.HandleFunc("POST /listings", lh.Create)
+	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(lh.Create)))
 	mux.HandleFunc("POST /signup", ah.Signup)
 	mux.HandleFunc("POST /signin", ah.Signin)
 
