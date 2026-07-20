@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -10,6 +11,7 @@ const (
 	maxImageBytes      = 5 * 1024 * 1024 // 5mb
 	maxImagePerListing = 10
 	uploadPrefix       = "uploads"
+	presignTTL         = 5 * time.Minute
 )
 
 var allowdContentTypes = map[string]string{

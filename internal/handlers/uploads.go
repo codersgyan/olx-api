@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/codersgyan/olx-api/internal/httpx"
 	"github.com/codersgyan/olx-api/internal/middleware"
@@ -53,6 +54,7 @@ func (uh UploadHandler) Presign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uploads := make([]PresignUpload, 0, len(req.Files))
 	for _, f := range req.Files {
 		ext, ok := allowdContentTypes[f.ContentType]
 		if !ok {
@@ -66,10 +68,22 @@ func (uh UploadHandler) Presign(w http.ResponseWriter, r *http.Request) {
 		}
 
 		key := mintUploadKey(userID, ext)
-		// Actually presigning
-		// uh.store.Presign
+		url, err := uh.store.PresignUpload(ctx, key, f.ContentType, presignTTL)
+		if err != nil {
+			log.Error("presign failed", "err", err, "key", key)
+			httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+			return
+		}
 
+		uploads = append(uploads, PresignUpload{
+			UploadURL: url,
+			ObjectKey: key,
+			ExpiresAt: time.Now().Add(presignTTL),
+		})
 	}
 
-	w.Write([]byte("ok"))
+	log.Info("presigned upload issued", "count", len(uploads))
+	w.Header().Set("Content-Type", "application/json")
+
+	_ = json.NewEncoder(w).Encode(PresignResponse{Uploads: uploads})
 }
