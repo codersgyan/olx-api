@@ -68,7 +68,7 @@ func (uh UploadHandler) Presign(w http.ResponseWriter, r *http.Request) {
 		}
 
 		key := mintUploadKey(userID, ext)
-		url, err := uh.store.PresignUpload(ctx, key, f.ContentType, presignTTL)
+		url, err := uh.store.PresignUpload(ctx, key, f.ContentType, f.SizeBytes, presignTTL)
 		if err != nil {
 			log.Error("presign failed", "err", err, "key", key)
 			httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)

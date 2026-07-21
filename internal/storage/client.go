@@ -46,11 +46,12 @@ func NewR2(ctx context.Context, cfg R2Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) PresignUpload(ctx context.Context, key, contentType string, expiry time.Duration) (string, error) {
+func (c *Client) PresignUpload(ctx context.Context, key, contentType string, contentLength int64, expiry time.Duration) (string, error) {
 	req, err := c.presigner.PresignPutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(c.bucket),
-		Key:         aws.String(key),
-		ContentType: aws.String(contentType),
+		Bucket:        aws.String(c.bucket),
+		Key:           aws.String(key),
+		ContentType:   aws.String(contentType),
+		ContentLength: aws.Int64(contentLength),
 	}, s3.WithPresignExpires(expiry))
 	if err != nil {
 		return "", fmt.Errorf("presignUpload: presign put failed: %w", err)
