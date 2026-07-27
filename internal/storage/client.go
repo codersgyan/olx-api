@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 )
 
 type Client struct {
@@ -23,6 +25,8 @@ type R2Config struct {
 	AccessSecret string
 	Bucket       string
 }
+
+var ErrNotFound = errors.New("storage:head: object not found")
 
 func NewR2(ctx context.Context, cfg R2Config) (*Client, error) {
 	r2Cfg, err := config.LoadDefaultConfig(ctx,
@@ -58,4 +62,42 @@ func (c *Client) PresignUpload(ctx context.Context, key, contentType string, con
 	}
 
 	return req.URL, nil
+}
+
+func (c *Client) Head(ctx context.Context, key string) (contentLength int64, contentType string, err error) {
+	out, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return 0, "", ErrNotFound
+		}
+
+		return 0, "", fmt.Errorf("storage: head %q: %w", key, err)
+	}
+
+	if out.ContentLength != nil {
+		contentLength = *out.ContentLength
+	}
+
+	if out.ContentType != nil {
+		contentType = *out.ContentType
+	}
+
+	return contentLength, contentType, nil
+}
+
+
+
+func isNotFound(err error) bool {
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		switch apiError.ErrorCode() {
+		case "NotFound", "NoSuchKey":
+			return true
+		}
+	}
+
+	return false
 }

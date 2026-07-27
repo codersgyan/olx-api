@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/codersgyan/olx-api/internal/httpx"
+	"github.com/codersgyan/olx-api/internal/jobs"
 	"github.com/codersgyan/olx-api/internal/middleware"
+	"github.com/codersgyan/olx-api/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -24,14 +26,16 @@ type listing struct {
 }
 
 type ListingHandler struct {
-	db     *sql.DB
-	logger *slog.Logger
+	db      *sql.DB
+	logger  *slog.Logger
+	storage *storage.Client
 }
 
-func NewListingHandler(db *sql.DB, logger *slog.Logger) *ListingHandler {
+func NewListingHandler(db *sql.DB, logger *slog.Logger, storage *storage.Client) *ListingHandler {
 	return &ListingHandler{
-		db:     db,
-		logger: logger,
+		db:      db,
+		logger:  logger,
+		storage: storage,
 	}
 }
 
@@ -107,16 +111,17 @@ func (lh ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestId := middleware.RequestIDFromContext(ctx)
+	log := lh.logger.With("request_id", requestId)
 	userID, ok := middleware.UserIDFromContext(ctx)
 	if !ok {
-		lh.logger.Error("no userid found in context", "request_id", requestId)
+		log.Error("no userid found in context", "request_id", requestId)
 		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
 		return
 	}
 
 	var req CreateListingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		lh.logger.Error("failed to decode", "request_id", requestId, "err", err)
+		log.Error("failed to decode", "request_id", requestId, "err", err)
 		httpx.Error(w, http.StatusBadRequest, "invalid body", httpx.CodeMalformedJSON)
 		return
 	}
@@ -128,17 +133,106 @@ func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row := lh.db.QueryRowContext(ctx, `
-	INSERT INTO listings (user_id, title, description, price, city) VALUES ($1, $2, $3, $4, $5) RETURNING id, title, created_at`, userID, req.Title, req.Description, req.Price, req.City)
+	listingID := uuid.New()
+	// uploads/68cab9b8-3109-4f07-b2e9-25fc953c6cac/e6bebd4a-7478-4802-bca4-78befa971c65.jpg
+	sources := make([]jobs.ImageSource, 0, len(req.ImageKeys))
+	for _, key := range req.ImageKeys {
+		imageID, ext, err := parseUploadKeys(key, userID)
+		if err != nil {
+			log.Error("failed to parse image key", "request_id", requestId, "err", err)
+			httpx.Error(w, http.StatusBadRequest, "invalid image keys", httpx.CodeMalformedJSON)
+			return
+		}
+
+		sources = append(sources, jobs.ImageSource{
+			UploadKey: key,
+			ObjectKey: mintFinalObjectKey(listingID, imageID, ext),
+		})
+	}
+
+	for _, s := range sources {
+		contentLength, contentType, err := lh.storage.Head(ctx, s.UploadKey)
+		if errors.Is(err, storage.ErrNotFound) {
+			// todo: log
+			httpx.ValidationError(w, http.StatusBadRequest, "no object found at object_key", httpx.CodeMalformedJSON, "image_keys")
+			return
+		}
+
+		if err != nil {
+			// todo: log <= important
+			httpx.ValidationError(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError, "image_keys")
+			return
+		}
+
+		if contentLength <= 0 || contentLength > maxImageBytes {
+			// todo: maybe delete the object ?
+			httpx.ValidationError(w, http.StatusBadRequest, "uploaded object size violates the size limit", httpx.CodeValidationFailed, "image_keys")
+			return
+		}
+
+		if _, ok := allowdContentTypes[contentType]; !ok {
+			// todo: delete the object ?
+			httpx.ValidationError(w, http.StatusBadRequest, "uploaded object has an unsupported content type", httpx.CodeValidationFailed, "image_keys")
+			return
+		}
+	}
+
+	tx, err := lh.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Error("begin tx failed", "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	row := tx.QueryRowContext(ctx, `
+	INSERT INTO listings (id, user_id, title, description, price, city) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, title, status, created_at`, listingID, userID, req.Title, req.Description, req.Price, req.City)
 
 	var out CreateListingResponse
-	if err := row.Scan(&out.ID, &out.Title, &out.CreatedAt); err != nil {
+	if err := row.Scan(&out.ID, &out.Title, &out.Status, &out.CreatedAt); err != nil {
 		lh.logger.Error("failed to insert", "request_id", requestId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
 		return
 	}
 
-	lh.logger.Info("listing created", "request_id", requestId, "listing_id", out.ID)
+	for i, s := range sources {
+		_, err := tx.ExecContext(ctx, `
+		INSERT INTO images (listing_id, object_key, position) VALUES ($1, $2, $3)`, listingID, s.UploadKey, int16(i))
+		if err != nil {
+			log.Error("insert image failed", "object_key", s.UploadKey, "err", err)
+			httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+			return
+		}
+	}
+
+	payload, err := json.Marshal(jobs.ProcessImagePayload{
+		ListingID: listingID,
+		Sources:   sources,
+	})
+	if err != nil {
+		log.Error("marshal job payload failed", "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	_, err = tx.ExecContext(ctx, `
+	INSERT INTO jobs (kind, payload) VALUES ($1, $2)`, jobs.KindProcessListingImage, payload)
+	if err != nil {
+		log.Error("insert job failed", "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Error("commit failed", "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	log.Info("listing created", "listing_id", out.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

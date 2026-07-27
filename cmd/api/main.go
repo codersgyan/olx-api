@@ -46,7 +46,7 @@ func main() {
 	fmt.Println(("storage initialised..."))
 	fmt.Println(("starting olx server..."))
 
-	lh := handlers.NewListingHandler(db, logger)
+	lh := handlers.NewListingHandler(db, logger, store)
 	ah := handlers.NewAuthHandler(db, logger, cfg)
 	uh := handlers.NewUploadHandler(logger, store)
 
