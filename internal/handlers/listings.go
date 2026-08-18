@@ -136,17 +136,19 @@ func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	listingID := uuid.New()
 	// uploads/68cab9b8-3109-4f07-b2e9-25fc953c6cac/e6bebd4a-7478-4802-bca4-78befa971c65.jpg
 	sources := make([]jobs.ImageSource, 0, len(req.ImageKeys))
+	imageKeys := make([]string, 0, len(req.ImageKeys))
 	for _, key := range req.ImageKeys {
-		imageID, ext, err := parseUploadKeys(key, userID)
+		imageID, _, err := parseUploadKeys(key, userID)
 		if err != nil {
 			log.Error("failed to parse image key", "request_id", requestId, "err", err)
 			httpx.Error(w, http.StatusBadRequest, "invalid image keys", httpx.CodeMalformedJSON)
 			return
 		}
 
+		imageKeys = append(imageKeys, mintImageKey(imageID))
 		sources = append(sources, jobs.ImageSource{
 			UploadKey: key,
-			ObjectKey: mintFinalObjectKey(listingID, imageID, ext),
+			ObjectKey: mintFinalObjectKey(listingID, imageID),
 		})
 	}
 
@@ -198,11 +200,12 @@ func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for i, s := range sources {
+	// images
+	for i, imageKey := range imageKeys {
 		_, err := tx.ExecContext(ctx, `
-		INSERT INTO images (listing_id, object_key, position) VALUES ($1, $2, $3)`, listingID, s.UploadKey, int16(i))
+		INSERT INTO images (listing_id, object_key, position) VALUES ($1, $2, $3)`, listingID, imageKey, int16(i))
 		if err != nil {
-			log.Error("insert image failed", "object_key", s.UploadKey, "err", err)
+			log.Error("insert image failed", "object_key", imageKey, "err", err)
 			httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
 			return
 		}
