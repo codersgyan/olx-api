@@ -36,7 +36,7 @@ func mintUploadKey(userID uuid.UUID, ext string) string {
 
 // {listingPrefix}/{listingId}/{imageID}.jpg
 func mintFinalObjectKey(listingId, imageID uuid.UUID) string {
-	return fmt.Sprintf("%s/%s/%s.%s", listingPrefix, listingId, mintImageKey(imageID))
+	return fmt.Sprintf("%s/%s/%s", listingPrefix, listingId, mintImageKey(imageID))
 }
 
 // uploads/68cab9b8-3109-4f07-b2e9-25fc953c6cac/e6bebd4a-7478-4802-bca4-78befa971c65.jpg

@@ -41,7 +41,7 @@ func main() {
 		Bucket:       cfg.StorageBucket,
 	})
 	if err != nil {
-		log.Fatalf("main.storage.r2", err)
+		log.Fatalf("main.storage.r2: %v", err)
 	}
 
 	fmt.Println(("storage initialised..."))
