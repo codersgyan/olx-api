@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -26,7 +27,7 @@ type R2Config struct {
 	Bucket       string
 }
 
-var ErrNotFound = errors.New("storage:head: object not found")
+var ErrNotFound = errors.New("storage: object not found")
 
 func NewR2(ctx context.Context, cfg R2Config) (*Client, error) {
 	r2Cfg, err := config.LoadDefaultConfig(ctx,
@@ -88,7 +89,33 @@ func (c *Client) Head(ctx context.Context, key string) (contentLength int64, con
 	return contentLength, contentType, nil
 }
 
+func (c *Client) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("storage: get %q: %w", key, err)
+	}
 
+	return out.Body, nil
+}
+
+func (c *Client) Put(ctx context.Context, key string, body io.Reader) error {
+	_, err := c.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(key),
+		Body:   body,
+	})
+	if err != nil {
+		return fmt.Errorf("storage: put %q: %w", key, err)
+	}
+
+	return nil
+}
 
 func isNotFound(err error) bool {
 	var apiError smithy.APIError

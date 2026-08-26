@@ -14,6 +14,7 @@ import (
 	"github.com/codersgyan/olx-api/internal/handlers"
 	"github.com/codersgyan/olx-api/internal/middleware"
 	"github.com/codersgyan/olx-api/internal/storage"
+	"github.com/codersgyan/olx-api/internal/worker"
 )
 
 func main() {
@@ -44,6 +45,11 @@ func main() {
 	}
 
 	fmt.Println(("storage initialised..."))
+
+	// start worker
+	wrk := worker.New(db, store, logger)
+	go wrk.Run(context.TODO())
+
 	fmt.Println(("starting olx server..."))
 
 	lh := handlers.NewListingHandler(db, logger, store)
