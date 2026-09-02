@@ -43,7 +43,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	rows, err := lh.db.QueryContext(ctx,
-		`SELECT id, title, description, price, city, created_at
+		`SELECT id, title, description, price, city, created_at, user_id
 				FROM listings
 				ORDER BY created_at DESC
 				LIMIT 100`)
@@ -58,7 +58,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var l listing
-		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt, &l.UserID); err != nil {
 			lh.logger.Error("rows scan error", "err", err)
 			httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 			return
