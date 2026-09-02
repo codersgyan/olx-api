@@ -25,6 +25,12 @@ type listing struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type imageRow struct {
+	ID        uuid.UUID
+	ObjectKey string
+	Position  int16
+}
+
 type ListingHandler struct {
 	db      *sql.DB
 	logger  *slog.Logger
@@ -43,10 +49,11 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	rows, err := lh.db.QueryContext(ctx,
-		`SELECT id, title, description, price, city, created_at, user_id
-				FROM listings
-				ORDER BY created_at DESC
-				LIMIT 100`)
+		`SELECT l.id, l.title, l.description, l.price, l.city, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
+FROM listings l
+LEFT JOIN images i ON i.listing_id = l.id
+WHERE l.id IN (SELECT id FROM listings ORDER BY created_at DESC LIMIT 100)
+ORDER BY created_at DESC, i.position`)
 	if err != nil {
 		lh.logger.Error("listings query error", "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
@@ -54,23 +61,9 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	listings := []listing{}
-
-	for rows.Next() {
-		var l listing
-		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt, &l.UserID); err != nil {
-			lh.logger.Error("rows scan error", "err", err)
-			httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
-			return
-		}
-
-		lh.logger.Info("listings fetched", "total", len(listings))
-
-		listings = append(listings, l)
-	}
-
-	if err := rows.Err(); err != nil {
-		lh.logger.Error("rows error", "err", err)
+	listings, err := lh.collapse(rows)
+	if err != nil {
+		lh.logger.Error("collapse listings failed", "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "Something went wrong", httpx.CodeInternalError)
 		return
 	}
@@ -241,4 +234,57 @@ func (lh ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (lh ListingHandler) collapse(rows *sql.Rows) ([]GetListingResponse, error) {
+	listings := []GetListingResponse{}
+	images := map[string][]imageRow{}
+	seen := make(map[string]struct{})
+
+	for rows.Next() {
+		var l GetListingResponse
+		var imgID uuid.NullUUID
+		var objKey sql.NullString
+		var position sql.NullInt16
+
+		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt, &l.UserID, &imgID, &objKey, &position); err != nil {
+			lh.logger.Error("rows scan error", "err", err)
+			return nil, err
+		}
+
+		if _, ok := seen[l.ID]; !ok {
+			seen[l.ID] = struct{}{}
+			listings = append(listings, l)
+		}
+
+		if imgID.Valid && objKey.Valid && position.Valid {
+			images[l.ID] = append(images[l.ID], imageRow{
+				ID:        imgID.UUID,
+				ObjectKey: objKey.String,
+				Position:  position.Int16,
+			})
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range listings {
+		listings[i].Images = lh.toImageResponse(images[listings[i].ID])
+	}
+
+	return listings, nil
+}
+
+func (lh ListingHandler) toImageResponse(imgRows []imageRow) []ImageResponse {
+	out := make([]ImageResponse, 0, len(imgRows))
+	for _, img := range imgRows {
+		out = append(out, ImageResponse{
+			ID:        img.ID.String(),
+			ObjectKey: img.ObjectKey,
+			Position:  img.Position,
+		})
+	}
+	return out
 }

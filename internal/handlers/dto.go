@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type CreateListingRequest struct {
@@ -19,6 +21,24 @@ type CreateListingResponse struct {
 	Title     string    `json:"title"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type ImageResponse struct {
+	ID        string `json:"id"`
+	ObjectKey string `json:"object_key"`
+	Position  int16  `json:"position"`
+}
+
+type GetListingResponse struct {
+	ID          string          `json:"id"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Price       int64           `json:"price"`
+	City        string          `json:"city"`
+	Status      string          `json:"status"`
+	UserID      uuid.UUID       `json:"user_id"`
+	Images      []ImageResponse `json:"images"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 type ValidationError struct {
