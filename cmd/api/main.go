@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/codersgyan/olx-api/internal/config"
@@ -18,8 +21,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	serverShutdownTimeout = 15 * time.Second
+)
+
 func main() {
 	cfg := config.MustLoad()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	db, err := db.Connect(cfg.DatabaseUrl)
 	if err != nil {
 		log.Fatalf("main.db.connect: %v", err)
@@ -57,7 +67,7 @@ func main() {
 	ah := handlers.NewAuthHandler(db, logger, cfg)
 	uh := handlers.NewUploadHandler(logger, store)
 
-	goblalLimiter := middleware.RateLimit(logger, rate.Every(time.Second), 100)
+	globalLimiter := middleware.RateLimit(logger, rate.Every(time.Second), 100)
 	// 60 secs/requests per minute = 60 / 500 = 0.12 secs
 	signinLimiter := middleware.RateLimit(logger, rate.Every(time.Second*5), 5) // 1 token every 12 second - 5r/min
 	signupLimiter := middleware.RateLimit(logger, rate.Every(time.Minute), 3)
@@ -72,7 +82,7 @@ func main() {
 	mux.Handle("POST /signin", signinLimiter(http.HandlerFunc(ah.Signin)))
 	mux.Handle("POST /uploads/presign", requireAuth(http.HandlerFunc(uh.Presign)))
 
-	handler := goblalLimiter(middleware.RequestId(mux))
+	handler := globalLimiter(middleware.RequestId(mux))
 
 	srv := http.Server{
 		Addr:         ":" + cfg.Port,
@@ -82,8 +92,23 @@ func main() {
 		IdleTimeout:  time.Second * 60,
 	}
 
-	log.Printf("server is listening on %s", srv.Addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server failed: %v", err)
+	go func() {
+		log.Printf("server is listening on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	// escape hatch double ctrl+c
+	stop()
+
+	srvShutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(srvShutdownCtx); err != nil {
+		logger.Error("server shutdown failed", "err", err)
 	}
+
+	// todo: clear the resources worker, db
 }

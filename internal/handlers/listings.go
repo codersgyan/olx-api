@@ -48,6 +48,9 @@ func NewListingHandler(db *sql.DB, logger *slog.Logger, storage *storage.Client)
 func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Just for graceful shutdown demo
+	lh.db.QueryContext(ctx, `SELECT pg_sleep(10) FROM listings LIMIT 1`)
+
 	rows, err := lh.db.QueryContext(ctx,
 		`SELECT l.id, l.title, l.description, l.price, l.city, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
 FROM listings l
