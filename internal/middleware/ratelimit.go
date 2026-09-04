@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codersgyan/olx-api/internal/httpx"
@@ -24,6 +25,7 @@ type bucket struct {
 }
 
 type limiter struct {
+	mu    sync.Mutex
 	items map[string]*bucket
 	limit rate.Limit
 	burst int
@@ -33,7 +35,10 @@ type limiter struct {
 // 	"userip": bucket
 // }
 
-func (l limiter) allow(key string) bool {
+func (l *limiter) allow(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	item, ok := l.items[key]
 	if !ok {
 		item = &bucket{limiter: rate.NewLimiter(l.limit, l.burst)}
@@ -50,6 +55,7 @@ func RateLimit(logger *slog.Logger, limit rate.Limit, burst int) func(next http.
 		limit: limit,
 		burst: burst,
 	}
+
 	// todo: cleanup
 
 	return func(next http.Handler) http.Handler {
@@ -69,7 +75,7 @@ func RateLimit(logger *slog.Logger, limit rate.Limit, burst int) func(next http.
 				httpx.Error(w, http.StatusTooManyRequests, "too many requests, please slow down", httpx.CodeRateLimited)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
