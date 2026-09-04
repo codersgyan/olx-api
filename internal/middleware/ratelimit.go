@@ -16,7 +16,9 @@ import (
 
 // todo: move this to config (.env)
 const (
-	trustedHeader = "X-Real-IP"
+	trustedHeader   = "X-Real-IP"
+	cleanupInterval = time.Second * 10
+	bucketTTL       = time.Minute * 10
 )
 
 type bucket struct {
@@ -56,7 +58,7 @@ func RateLimit(logger *slog.Logger, limit rate.Limit, burst int) func(next http.
 		burst: burst,
 	}
 
-	// todo: cleanup
+	go l.cleanup()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,4 +95,19 @@ func clientIP(r *http.Request, trustedHeader string) string {
 	}
 
 	return ip
+}
+
+func (l *limiter) cleanup() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for now := range ticker.C {
+		l.mu.Lock()
+		for key, item := range l.items {
+			if now.Sub(item.lastSeen) > bucketTTL {
+				delete(l.items, key)
+			}
+		}
+		l.mu.Unlock()
+	}
 }
