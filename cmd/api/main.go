@@ -15,6 +15,7 @@ import (
 	"github.com/codersgyan/olx-api/internal/middleware"
 	"github.com/codersgyan/olx-api/internal/storage"
 	"github.com/codersgyan/olx-api/internal/worker"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -56,6 +57,10 @@ func main() {
 	ah := handlers.NewAuthHandler(db, logger, cfg)
 	uh := handlers.NewUploadHandler(logger, store)
 
+	goblalLimiter := middleware.RateLimit(logger, rate.Every(time.Second), 100)
+	// 60 secs/requests per minute = 60 / 500 = 0.12 secs
+	signinLimiter := middleware.RateLimit(logger, rate.Every(time.Second*5), 5) // 1 token every 12 second - 5r/min
+	signupLimiter := middleware.RateLimit(logger, rate.Every(time.Minute), 3)
 	requireAuth := middleware.RequireAuth(logger, cfg.JwtKey)
 
 	mux := http.NewServeMux()
@@ -63,11 +68,11 @@ func main() {
 	mux.HandleFunc("GET /listings", lh.List)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(lh.Delete)))
 	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(lh.Create)))
-	mux.HandleFunc("POST /signup", ah.Signup)
-	mux.HandleFunc("POST /signin", ah.Signin)
+	mux.Handle("POST /signup", signupLimiter(http.HandlerFunc(ah.Signup)))
+	mux.Handle("POST /signin", signinLimiter(http.HandlerFunc(ah.Signin)))
 	mux.Handle("POST /uploads/presign", requireAuth(http.HandlerFunc(uh.Presign)))
 
-	handler := middleware.RequestId(mux)
+	handler := goblalLimiter(middleware.RequestId(mux))
 
 	srv := http.Server{
 		Addr:         ":" + cfg.Port,
