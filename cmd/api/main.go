@@ -23,6 +23,7 @@ import (
 
 const (
 	serverShutdownTimeout = 15 * time.Second
+	workerShutdownTimeout = 10 * time.Second
 )
 
 func main() {
@@ -59,7 +60,7 @@ func main() {
 
 	// start worker
 	wrk := worker.New(db, store, logger)
-	go wrk.Run(context.TODO())
+	go wrk.Run(ctx)
 
 	fmt.Println(("starting olx server..."))
 
@@ -103,6 +104,7 @@ func main() {
 	// escape hatch double ctrl+c
 	stop()
 
+	logger.Info("shutting down...")
 	srvShutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 
@@ -110,5 +112,12 @@ func main() {
 		logger.Error("server shutdown failed", "err", err)
 	}
 
-	// todo: clear the resources worker, db
+	select {
+	case <-wrk.Done():
+	case <-time.After(workerShutdownTimeout):
+		logger.Warn("worker still busy, exiting anyway.")
+	}
+
+	db.Close()
+	logger.Info("bye")
 }

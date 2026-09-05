@@ -37,6 +37,7 @@ type Worker struct {
 	db      *sql.DB
 	storage *storage.Client
 	logger  *slog.Logger
+	done    chan struct{}
 }
 
 func New(db *sql.DB, storage *storage.Client, logger *slog.Logger) *Worker {
@@ -44,19 +45,33 @@ func New(db *sql.DB, storage *storage.Client, logger *slog.Logger) *Worker {
 		db:      db,
 		storage: storage,
 		logger:  logger,
+		done:    make(chan struct{}),
 	}
 }
 
 func (w *Worker) Run(ctx context.Context) {
+	defer close(w.done)
 	w.logger.Info("worker started...")
 	for {
+		select {
+		case <-ctx.Done():
+			w.logger.Info("worker stopped")
+			return
+		default:
+		}
+
 		isEmpty, err := w.claimAndProcess(ctx)
 		if err != nil {
 			w.logger.Error("job failed", "err", err)
 		}
 
 		if isEmpty {
-			time.Sleep(pollInterval)
+			select {
+			case <-ctx.Done():
+				w.logger.Info("worker stopped")
+				return
+			case <-time.After(pollInterval):
+			}
 		}
 	}
 }
@@ -228,4 +243,8 @@ func (w *Worker) listingIDFor(kind string, payload []byte) (uuid.UUID, bool) {
 	default:
 		return uuid.Nil, false
 	}
+}
+
+func (w *Worker) Done() <-chan struct{} {
+	return w.done
 }
