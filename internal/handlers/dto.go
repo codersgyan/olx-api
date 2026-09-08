@@ -29,6 +29,16 @@ type ImageResponse struct {
 	Position  int16  `json:"position"`
 }
 
+// {
+// 	data: [{all fields data}],
+// 	nextCursor: null
+// }
+
+type ListListingsResponse struct {
+	Data       []GetListingResponse `json:"data"`
+	NextCursor *string              `json:"next_cursor"`
+}
+
 type GetListingResponse struct {
 	ID          string          `json:"id"`
 	Title       string          `json:"title"`

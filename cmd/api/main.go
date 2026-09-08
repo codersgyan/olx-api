@@ -70,7 +70,7 @@ func main() {
 
 	globalLimiter := middleware.RateLimit(logger, rate.Every(time.Second), 100)
 	// 60 secs/requests per minute = 60 / 500 = 0.12 secs
-	signinLimiter := middleware.RateLimit(logger, rate.Every(time.Second*5), 5) // 1 token every 12 second - 5r/min
+	signinLimiter := middleware.RateLimit(logger, rate.Every(time.Second*5), 5) // 1 token every 5 second - 12r/min
 	signupLimiter := middleware.RateLimit(logger, rate.Every(time.Minute), 3)
 	requireAuth := middleware.RequireAuth(logger, cfg.JwtKey)
 
