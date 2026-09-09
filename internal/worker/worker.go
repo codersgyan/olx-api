@@ -102,7 +102,7 @@ func (w *Worker) claimAndProcess(ctx context.Context) (bool, error) {
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// means queue is empty
-		w.logger.Info("queue is empty", "retry", pollInterval)
+		// w.logger.Info("queue is empty", "retry", pollInterval)
 		return true, nil
 	}
 

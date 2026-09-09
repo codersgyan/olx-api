@@ -75,7 +75,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	after := r.URL.Query().Get("after")
-	rows, err := lh.queryListings(ctx, after, limit)
+	rows, err := lh.queryListings(ctx, after, limit+1)
 	if errors.Is(err, errInvalidCursor) {
 		httpx.ValidationError(w, http.StatusBadRequest, "invalid cursor", httpx.CodeValidationFailed, "after")
 		return
@@ -97,8 +97,9 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	out := ListListingsResponse{Data: listings}
 
-	if len(listings) > 0 {
-		lastRow := listings[len(listings)-1]
+	if len(listings) > limit {
+		out.Data = listings[:limit]
+		lastRow := out.Data[len(out.Data)-1]
 		id, err := uuid.Parse(lastRow.ID)
 		if err != nil {
 			lh.logger.Error("bad listing id from db", "listing_id", lastRow.ID, "err", err)
@@ -118,7 +119,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 
 		out = ListListingsResponse{
-			Data:       listings,
+			Data:       out.Data,
 			NextCursor: &cursor,
 		}
 	}
