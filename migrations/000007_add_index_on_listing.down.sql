@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS listings_ready_pagination_idx;
