@@ -39,18 +39,6 @@ type imageRow struct {
 	Position  int16
 }
 
-const queryWithoutCursor = `SELECT l.id, l.title, l.description, l.price, l.city, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
-FROM listings l
-LEFT JOIN images i ON i.listing_id = l.id
-WHERE l.id IN (SELECT id FROM listings l2 WHERE l2.status = 'ready' ORDER BY l2.created_at DESC, l2.id DESC LIMIT $1)
-ORDER BY l.created_at DESC, l.id DESC, i.position`
-
-const queryWithCursor = `SELECT l.id, l.title, l.description, l.price, l.city, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
-FROM listings l
-LEFT JOIN images i ON i.listing_id = l.id
-WHERE l.id IN (SELECT id FROM listings l2 WHERE l2.status = 'ready' AND (l2.created_at, l2.id) < ($1, $2) ORDER BY l2.created_at DESC, l2.id DESC LIMIT $3)
-ORDER BY l.created_at DESC, l.id DESC, i.position`
-
 type ListingHandler struct {
 	db      *sql.DB
 	logger  *slog.Logger
@@ -68,6 +56,18 @@ func NewListingHandler(db *sql.DB, logger *slog.Logger, storage *storage.Client)
 func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	filters, err := parseListingsFilters(r.URL.Query())
+	if err != nil {
+		var verr *ValidationError
+		if errors.As(err, &verr) {
+			httpx.ValidationError(w, http.StatusBadRequest, err.Error(), httpx.CodeValidationFailed, verr.Field)
+			return
+		}
+
+		httpx.ValidationError(w, http.StatusBadRequest, err.Error(), httpx.CodeValidationFailed, "")
+		return
+	}
+
 	limit, err := parseListingLimit(r.URL.Query().Get("limit"))
 	if err != nil {
 		httpx.ValidationError(w, http.StatusBadRequest, err.Error(), httpx.CodeValidationFailed, "limit")
@@ -75,7 +75,7 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	after := r.URL.Query().Get("after")
-	rows, err := lh.queryListings(ctx, after, limit+1)
+	rows, err := lh.queryListings(ctx, filters, after, limit+1)
 	if errors.Is(err, errInvalidCursor) {
 		httpx.ValidationError(w, http.StatusBadRequest, "invalid cursor", httpx.CodeValidationFailed, "after")
 		return
@@ -130,17 +130,22 @@ func (lh ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (lh ListingHandler) queryListings(ctx context.Context, after string, limit int) (*sql.Rows, error) {
-	if after == "" {
-		return lh.db.QueryContext(ctx, queryWithoutCursor, limit)
+func (lh ListingHandler) queryListings(ctx context.Context, filters listingFilters, after string, limit int) (*sql.Rows, error) {
+	var cur *listingCursor
+
+	if after != "" {
+		cursor, err := decodeCursor(after)
+		if err != nil {
+			return nil, err
+		}
+		cur = &cursor
 	}
 
-	cursor, err := decodeCursor(after)
-	if err != nil {
-		return nil, err
-	}
-
-	return lh.db.QueryContext(ctx, queryWithCursor, cursor.CreatedAt, cursor.ID, limit)
+	query, args := buildListingQuery(filters, cur, limit)
+	fmt.Println("==========")
+	fmt.Println(query)
+	fmt.Println("==========")
+	return lh.db.QueryContext(ctx, query, args...) // Variadic parameters
 }
 
 func (lh ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
