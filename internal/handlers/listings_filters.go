@@ -102,7 +102,7 @@ func canonicalListingStatus(rawStatus string) (string, bool) {
 // 	  AND l2.price <= $3
 //    AND (l2.created_at, l2.id) < ($4, $5)
 
-const queryTemplate = `SELECT l.id, l.title, l.description, l.price, l.city, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
+const queryTemplate = `SELECT l.id, l.title, l.description, l.price, l.city, l.status, l.created_at, l.user_id, i.id as image_id, i.object_key, i.position
 FROM listings l
 LEFT JOIN images i ON i.listing_id = l.id
 WHERE l.id IN (

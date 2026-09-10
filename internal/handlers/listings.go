@@ -142,9 +142,6 @@ func (lh ListingHandler) queryListings(ctx context.Context, filters listingFilte
 	}
 
 	query, args := buildListingQuery(filters, cur, limit)
-	fmt.Println("==========")
-	fmt.Println(query)
-	fmt.Println("==========")
 	return lh.db.QueryContext(ctx, query, args...) // Variadic parameters
 }
 
@@ -321,7 +318,7 @@ func (lh ListingHandler) collapse(rows *sql.Rows) ([]GetListingResponse, error) 
 		var objKey sql.NullString
 		var position sql.NullInt16
 
-		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt, &l.UserID, &imgID, &objKey, &position); err != nil {
+		if err := rows.Scan(&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.Status, &l.CreatedAt, &l.UserID, &imgID, &objKey, &position); err != nil {
 			lh.logger.Error("rows scan error", "err", err)
 			return nil, err
 		}
