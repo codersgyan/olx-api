@@ -23,6 +23,24 @@ type CreateListingResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type UpdateLisingRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Price       int64  `json:"price"`
+	City        string `json:"city"`
+}
+
+type UpdateLisingResponse struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Price       int64     `json:"price"`
+	City        string    `json:"city"`
+	Status      string    `json:"status"`
+	UserID      uuid.UUID `json:"user_id"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type ImageResponse struct {
 	ID        string `json:"id"`
 	ObjectKey string `json:"object_key"`
@@ -60,24 +78,33 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Msg)
 }
 
+func (req UpdateLisingRequest) Validate() error {
+	return validateListingFields(req.Title, req.Description, req.City, req.Price)
+}
+
 func (req CreateListingRequest) Validate() error {
-	if strings.TrimSpace(req.Title) == "" {
+	return validateListingFields(req.Title, req.Description, req.City, req.Price)
+}
+
+func validateListingFields(title, description, city string, price int64) error {
+	if strings.TrimSpace(title) == "" {
 		return &ValidationError{Field: "title", Msg: "must not be empty"}
 	}
-	if len(req.Title) > 200 {
+	if len(title) > 200 {
 		return &ValidationError{Field: "title", Msg: "must be at most 200 characters"}
 	}
-	if strings.TrimSpace(req.Description) == "" {
+	if strings.TrimSpace(description) == "" {
 		return &ValidationError{Field: "description", Msg: "must not be empty"}
 	}
-	if len(req.Description) > 5000 {
+	if len(description) > 5000 {
 		return &ValidationError{Field: "description", Msg: "must be at most 5000 characters"}
 	}
-	if req.Price <= 0 {
+	if price <= 0 {
 		return &ValidationError{Field: "price", Msg: "must be greater than zero"}
 	}
-	if strings.TrimSpace(req.City) == "" {
+	if strings.TrimSpace(city) == "" {
 		return &ValidationError{Field: "city", Msg: "must not be empty"}
 	}
+
 	return nil
 }

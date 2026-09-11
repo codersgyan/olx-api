@@ -145,10 +145,68 @@ func (lh ListingHandler) queryListings(ctx context.Context, filters listingFilte
 	return lh.db.QueryContext(ctx, query, args...) // Variadic parameters
 }
 
+func (lh ListingHandler) Update(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	requestId := middleware.RequestIDFromContext(ctx)
+	id := r.PathValue("id")
+	listingId, err := uuid.Parse(id)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid listing id", httpx.CodeInvalidID)
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(ctx)
+	if !ok {
+		lh.logger.Error("no userid found in context", "request_id", requestId)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	var req UpdateLisingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		lh.logger.Error("failed to decode", "request_id", requestId, "err", err)
+		httpx.Error(w, http.StatusBadRequest, "invalid body", httpx.CodeMalformedJSON)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		var verr *ValidationError
+		errors.As(err, &verr)
+		httpx.ValidationError(w, http.StatusUnprocessableEntity, err.Error(), httpx.CodeValidationFailed, verr.Field)
+		return
+	}
+
+	row := lh.db.QueryRowContext(ctx, `
+	UPDATE listings SET title = $1, description = $2, price = $3, city = $4
+	WHERE id = $5 AND user_id = $6
+	RETURNING id, title, description, price, city, status, user_id, created_at`, req.Title, req.Description, req.Price, req.City, listingId, userID)
+
+	var out UpdateLisingResponse
+	err = row.Scan(&out.ID, &out.Title, &out.Description, &out.Price, &out.City, &out.Status, &out.UserID, &out.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.Error(w, http.StatusInternalServerError, "listing not found", httpx.CodeNotFound)
+		return
+	}
+
+	if err != nil {
+		lh.logger.Error("update failed", "listing_id", listingId, "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "something went wrong", httpx.CodeInternalError)
+		return
+	}
+
+	lh.logger.Info("listing updated", "listing_id", out.ID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	_ = json.NewEncoder(w).Encode(out)
+}
+
 func (lh ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	requestId := middleware.RequestIDFromContext(ctx)
 	id := r.PathValue("id")
+	// todo: validate this id (uuid)
 
 	userID, ok := middleware.UserIDFromContext(ctx)
 	if !ok {

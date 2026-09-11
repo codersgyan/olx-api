@@ -74,11 +74,14 @@ func main() {
 	signupLimiter := middleware.RateLimit(logger, rate.Every(time.Minute), 3)
 	requireAuth := middleware.RequireAuth(logger, cfg.JwtKey)
 
+	writeLimiter := middleware.RateLimit(logger, rate.Every(5*time.Second), 10)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handlers.Health)
 	mux.HandleFunc("GET /listings", lh.List)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(lh.Delete)))
-	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(lh.Create)))
+	mux.Handle("POST /listings", requireAuth(writeLimiter(http.HandlerFunc(lh.Create))))
+	mux.Handle("PUT /listings/{id}", requireAuth(writeLimiter(http.HandlerFunc(lh.Update))))
 	mux.Handle("POST /signup", signupLimiter(http.HandlerFunc(ah.Signup)))
 	mux.Handle("POST /signin", signinLimiter(http.HandlerFunc(ah.Signin)))
 	mux.Handle("POST /uploads/presign", requireAuth(http.HandlerFunc(uh.Presign)))
