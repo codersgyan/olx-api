@@ -8,12 +8,6 @@ import (
 )
 
 const (
-	statusReady      = "ready"
-	statusProcessing = "processing"
-	statusRejected   = "rejected"
-)
-
-const (
 	defaultListingStatus = "ready"
 )
 
@@ -31,17 +25,7 @@ type listingFilters struct {
 // status=ready&city=delhi&min_price=1000000&max_price=2000000
 func parseListingsFilters(params url.Values) (listingFilters, error) {
 	var f listingFilters
-
-	rawStatus := strings.TrimSpace(params.Get("status"))
-	if rawStatus == "" {
-		rawStatus = defaultListingStatus
-	}
-
-	status, ok := canonicalListingStatus(rawStatus)
-	if !ok {
-		return listingFilters{}, &ValidationError{Field: "status", Msg: fmt.Sprintf("must be one of %s, %s, %s", statusReady, statusProcessing, statusRejected)}
-	}
-	f.Status = status
+	f.Status = defaultListingStatus
 
 	city := strings.TrimSpace(params.Get("city"))
 	if len(city) > maxCityLength {
@@ -81,19 +65,6 @@ func parsePrice(rawPrice, field string) (*int64, error) {
 	}
 
 	return &n, nil
-}
-
-func canonicalListingStatus(rawStatus string) (string, bool) {
-	switch rawStatus {
-	case statusReady:
-		return statusReady, true
-	case statusProcessing:
-		return statusProcessing, true
-	case statusRejected:
-		return statusRejected, true
-	default:
-		return "", false
-	}
 }
 
 // l2.status = "ready"
